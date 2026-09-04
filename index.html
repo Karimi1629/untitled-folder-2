@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Semester Comeback Planner</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --paper:#EDE7DA; --card:#F7F3E9; --ink:#20242B; --ink-soft:#5B5647;
+    --indigo:#2B3A55; --indigo-light:#3E5075; --amber:#B8792F; --sage:#5C7A5E;
+    --line:#D8CFBC; --danger:#A34A3C; --row-h:44px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  h1,h2{font-family:Georgia,'Iowan Old Style',serif; font-weight:600; margin:0;}
+  .wrap{max-width:1100px; margin:0 auto; padding:24px 16px 60px;}
+  .top{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px;}
+  .eyebrow{font-size:12px; color:var(--ink-soft);}
+  .btn{
+    background:var(--indigo); color:#fff; border:none; border-radius:7px;
+    padding:9px 14px; font-size:13px; cursor:pointer; font-weight:600;
+  }
+  .btn.secondary{background:transparent; color:var(--indigo); border:1px solid var(--line);}
+  .btn.danger{background:var(--danger);}
+  input, select{
+    font-family:inherit; font-size:13px; border:1px solid var(--line);
+    background:var(--card); border-radius:6px; padding:7px 9px;
+  }
+
+  /* Auth screen */
+  #auth-screen{
+    max-width:360px; margin:80px auto; background:var(--card);
+    border:1px solid var(--line); border-radius:10px; padding:28px; text-align:center;
+  }
+  #auth-screen input{width:100%; margin-bottom:10px;}
+  #auth-screen .btn{width:100%; margin-top:6px;}
+  #auth-msg{font-size:12px; color:var(--ink-soft); margin-top:10px; min-height:16px;}
+  #auth-toggle{font-size:12px; color:var(--indigo); cursor:pointer; margin-top:14px; text-decoration:underline;}
+
+  /* Grid */
+  .grid-scroll{overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--card);}
+  .grid{display:grid; grid-template-columns:52px repeat(7,minmax(120px,1fr)); min-width:940px; position:relative;}
+  .grid-head{padding:8px 4px; font-size:12px; font-weight:600; text-align:center; border-bottom:1px solid var(--line); color:var(--ink-soft);}
+  .hour-label{font-size:10px; color:var(--ink-soft); text-align:right; padding-right:6px; border-right:1px solid var(--line); position:relative; top:-6px;}
+  .day-col{position:relative; border-left:1px solid var(--line); background-image:repeating-linear-gradient(to bottom, transparent, transparent calc(var(--row-h)/1 - 1px), var(--line) calc(var(--row-h)/1 - 1px), var(--line) var(--row-h));}
+  .block{
+    position:absolute; left:3px; right:3px; border-radius:6px; padding:4px 6px;
+    font-size:11px; color:#fff; cursor:grab; overflow:hidden; line-height:1.3;
+    border:1px solid rgba(0,0,0,0.15);
+  }
+  .block.placeholder{border:1px dashed rgba(255,255,255,0.7);}
+  .block:active{cursor:grabbing;}
+  .block .lbl{font-weight:600; display:block;}
+  .block .tm{opacity:0.85; font-size:10px;}
+
+  /* Legend / add */
+  .legend{display:flex; gap:14px; flex-wrap:wrap; margin:14px 0 20px; font-size:12px; color:var(--ink-soft);}
+  .swatch{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:middle;}
+
+  /* Task section */
+  .tasks-head{display:flex; align-items:center; justify-content:space-between; margin:32px 0 10px;}
+  .task-row{
+    display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line);
+    border-radius:8px; padding:9px 10px; margin-bottom:6px;
+  }
+  .check{
+    width:20px; height:20px; border-radius:5px; border:1.5px solid var(--line); flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; background:transparent;
+  }
+  .check.done{background:var(--sage); border-color:var(--sage); color:#fff;}
+  .task-text{flex:1; font-size:14px;}
+  .task-text.done{text-decoration:line-through; color:var(--ink-soft);}
+  .badge{font-size:10px; background:var(--danger); color:#fff; border-radius:10px; padding:2px 6px; flex-shrink:0;}
+  .del{background:none; border:none; cursor:pointer; color:var(--ink-soft); font-size:15px;}
+  .add-row{display:flex; gap:6px; margin:10px 0 20px;}
+  .add-row input{flex:1;}
+
+  /* Edit popover */
+  #popover{
+    position:fixed; z-index:50; background:var(--card); border:1px solid var(--line); border-radius:8px;
+    padding:12px; box-shadow:0 8px 24px rgba(0,0,0,0.18); display:none; width:220px;
+  }
+  #popover label{display:block; font-size:11px; color:var(--ink-soft); margin:8px 0 3px;}
+  #popover input, #popover select{width:100%;}
+  #popover .row{display:flex; gap:6px;}
+  #popover .row2{display:flex; gap:6px; margin-top:12px;}
+  #popover .row2 button{flex:1;}
+</style>
+</head>
+<body>
+
+<div id="auth-screen">
+  <h2>Semester Comeback</h2>
+  <p style="font-size:12px;color:var(--ink-soft);margin:8px 0 16px;">Sign in to sync your planner across devices.</p>
+  <input id="auth-email" type="email" placeholder="email" />
+  <input id="auth-pass" type="password" placeholder="password" />
+  <button class="btn" id="auth-submit">Sign in</button>
+  <div id="auth-msg"></div>
+  <div id="auth-toggle">Need an account? Sign up instead</div>
+</div>
+
+<div class="wrap" id="app" style="display:none;">
+  <div class="top">
+    <div>
+      <div class="eyebrow" id="user-email"></div>
+      <h1 id="week-label">Week of —</h1>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <label style="font-size:12px; color:var(--ink-soft);">study hrs / uni hr
+        <input id="ratio" type="number" min="2" max="3" step="0.5" value="2.5" style="width:52px; margin-left:6px;" />
+      </label>
+      <button class="btn secondary" id="signout-btn">Sign out</button>
+    </div>
+  </div>
+
+  <div class="grid-scroll">
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div class="legend" id="legend"></div>
+  <button class="btn secondary" id="add-block-btn">+ Add block</button>
+
+  <div class="tasks-head">
+    <h2 style="font-size:18px;">This week's tasks</h2>
+    <span id="pending-count" style="font-size:12px; color:var(--ink-soft);"></span>
+  </div>
+  <div id="task-list"></div>
+  <div class="add-row">
+    <select id="new-task-cat"></select>
+    <input id="new-task-text" placeholder="Add a task…" />
+    <button class="btn" id="add-task-btn">Add</button>
+  </div>
+  <button class="btn" id="rollover-btn" style="width:100%;">↻ Close this week & roll over</button>
+</div>
+
+<div id="popover">
+  <label>Label</label><input id="pop-label" />
+  <div class="row">
+    <div style="flex:1;"><label>Start</label><input id="pop-start" type="time" /></div>
+    <div style="flex:1;"><label>End</label><input id="pop-end" type="time" /></div>
+  </div>
+  <label>Day</label>
+  <select id="pop-day"></select>
+  <label>Category</label>
+  <select id="pop-cat"></select>
+  <div class="row2">
+    <button class="btn danger" id="pop-delete">Delete</button>
+    <button class="btn" id="pop-save">Save</button>
+  </div>
+</div>
+
+<script>
+/* ============ 1. CONFIGURE THIS ============
+   Create a free project at supabase.com, then paste your values below.
+   Project Settings -> API -> Project URL / anon public key. */
+const SUPABASE_URL = "https://oawqdcymezqgjzwftvsk.supabase.coRL";
+const SUPABASE_ANON_KEY = "sb_publishable_OW452wfYQ0L0pNm-Qhmymg_4BihVqC2";
+/* ============================================ */
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const CATEGORY_META = {
+  uni:     { label: "Uni",          color: "#2B3A55" },
+  study:   { label: "Study block",  color: "#3E5075" },
+  gym:     { label: "Gym",          color: "#5C7A5E" },
+  work:    { label: "Work",         color: "#B8792F" },
+  personal:{ label: "Personal",     color: "#7A7562" },
+};
+const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const DAY_START = 7;   // 07:00
+const DAY_END = 23;    // 23:00
+const ROW_H = 44;      // px per hour
+
+const DEFAULT_BLOCKS = [
+  { id: uid(), day: "Mon", start: "09:45", end: "11:15", label: "Business Ethics", category: "uni", placeholder: true },
+  { id: uid(), day: "Tue", start: "13:15", end: "14:45", label: "Corporate Finance", category: "uni" },
+  { id: uid(), day: "Tue", start: "16:45", end: "18:15", label: "ML for Business Apps (A)", category: "uni" },
+  { id: uid(), day: "Wed", start: "11:30", end: "13:00", label: "Intro to Financial Markets", category: "uni" },
+  { id: uid(), day: "Wed", start: "14:00", end: "18:00", label: "Intro to Programming", category: "uni" },
+  { id: uid(), day: "Thu", start: "16:45", end: "18:15", label: "ML for Business Apps (B1)", category: "uni" },
+  { id: uid(), day: "Mon", start: "18:00", end: "19:30", label: "Gym", category: "gym", placeholder: true },
+  { id: uid(), day: "Wed", start: "18:00", end: "19:30", label: "Gym", category: "gym", placeholder: true },
+  { id: uid(), day: "Fri", start: "18:00", end: "19:30", label: "Gym", category: "gym", placeholder: true },
+  { id: uid(), day: "Fri", start: "09:00", end: "13:00", label: "EEP work", category: "work", placeholder: true },
+];
+
+let state = { blocks: DEFAULT_BLOCKS, tasks: [], weekStart: mondayOf(new Date()), ratio: 2.5, genWeeks: [] };
+let currentUser = null;
+let dragBlockId = null, dragOffsetMin = 0;
+let saveTimer = null;
+
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function toMinutes(t){ const [h,m]=t.split(":").map(Number); return h*60+m; }
+function toTime(mins){
+  mins = Math.max(DAY_START*60, Math.min(DAY_END*60-5, mins));
+  mins = Math.round(mins/15)*15;
+  const h = Math.floor(mins/60), m = mins%60;
+  return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
+}
+function duration(b){ return (toMinutes(b.end)-toMinutes(b.start)); }
+function mondayOf(d){ const date=new Date(d); const day=date.getDay(); const diff=(day===0?-6:1)-day; date.setDate(date.getDate()+diff); date.setHours(0,0,0,0); return isoDate(date); }
+function isoDate(d){ return d.toISOString().slice(0,10); }
+function fmtWeek(iso){
+  const d=new Date(iso+"T00:00:00"); const end=new Date(d); end.setDate(end.getDate()+6);
+  const opt={month:"short",day:"numeric"};
+  return d.toLocaleDateString("en-GB",opt)+" – "+end.toLocaleDateString("en-GB",opt);
+}
+
+/* ---------- Auth ---------- */
+let authMode = "signin";
+document.getElementById("auth-toggle").onclick = () => {
+  authMode = authMode==="signin" ? "signup" : "signin";
+  document.getElementById("auth-submit").textContent = authMode==="signin" ? "Sign in" : "Sign up";
+  document.getElementById("auth-toggle").textContent = authMode==="signin" ? "Need an account? Sign up instead" : "Have an account? Sign in instead";
+};
+document.getElementById("auth-submit").onclick = async () => {
+  const email = document.getElementById("auth-email").value.trim();
+  const password = document.getElementById("auth-pass").value;
+  const msg = document.getElementById("auth-msg");
+  msg.textContent = "…";
+  const fn = authMode==="signin" ? sb.auth.signInWithPassword({email,password}) : sb.auth.signUp({email,password});
+  const { data, error } = await fn;
+  if (error) { msg.textContent = error.message; return; }
+  if (authMode==="signup" && !data.session) { msg.textContent = "Check your email to confirm, then sign in."; return; }
+  msg.textContent = "";
+  await onAuthed(data.session ? data.session.user : (await sb.auth.getUser()).data.user);
+};
+document.getElementById("signout-btn").onclick = async () => {
+  await sb.auth.signOut();
+  currentUser = null;
+  document.getElementById("app").style.display = "none";
+  document.getElementById("auth-screen").style.display = "block";
+};
+
+async function onAuthed(user){
+  currentUser = user;
+  document.getElementById("user-email").textContent = user.email;
+  document.getElementById("auth-screen").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  await loadState();
+  render();
+}
+
+/* ---------- Persistence ---------- */
+async function loadState(){
+  const { data, error } = await sb.from("planner_data").select("data").eq("user_id", currentUser.id).maybeSingle();
+  if (data && data.data && Object.keys(data.data).length) {
+    state = Object.assign(state, data.data);
+  } else {
+    await saveState(); // seed row
+  }
+  maybeGenerateStudyBlocks();
+}
+async function saveState(){
+  await sb.from("planner_data").upsert({ user_id: currentUser.id, data: state, updated_at: new Date().toISOString() });
+}
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveState, 400);
+}
+
+/* ---------- Study block generation ---------- */
+function maybeGenerateStudyBlocks(){
+  if (state.genWeeks.includes(state.weekStart)) return;
+  const hoursByLabel = {};
+  state.blocks.filter(b=>b.category==="uni").forEach(b=>{
+    hoursByLabel[b.label] = (hoursByLabel[b.label]||0) + duration(b)/60;
+  });
+  Object.entries(hoursByLabel).forEach(([label,hrs])=>{
+    state.tasks.push({ id:uid(), text:`Study: ${label} (${(hrs*state.ratio).toFixed(1)}h)`, category:"study", weekStart:state.weekStart, completed:false, carried:0 });
+  });
+  state.genWeeks.push(state.weekStart);
+  scheduleSave();
+}
+
+/* ---------- Rendering: grid ---------- */
+function render(){
+  document.getElementById("week-label").textContent = "Week of " + fmtWeek(state.weekStart);
+  document.getElementById("ratio").value = state.ratio;
+  renderGrid();
+  renderLegend();
+  renderTasks();
+}
+
+function renderGrid(){
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+  grid.style.setProperty("--row-h", ROW_H+"px");
+
+  // corner
+  const corner = document.createElement("div");
+  grid.appendChild(corner);
+  DAYS.forEach(d=>{
+    const h = document.createElement("div");
+    h.className = "grid-head"; h.textContent = d;
+    grid.appendChild(h);
+  });
+
+  const hourCol = document.createElement("div");
+  hourCol.style.position="relative";
+  for (let h=DAY_START; h<DAY_END; h++){
+    const lbl = document.createElement("div");
+    lbl.className="hour-label"; lbl.style.height=ROW_H+"px";
+    lbl.textContent = h+":00";
+    hourCol.appendChild(lbl);
+  }
+  grid.appendChild(hourCol);
+
+  const totalH = (DAY_END-DAY_START)*ROW_H;
+
+  DAYS.forEach(day=>{
+    const col = document.createElement("div");
+    col.className = "day-col";
+    col.style.height = totalH+"px";
+    col.dataset.day = day;
+    col.ondragover = (e)=>e.preventDefault();
+    col.ondrop = onDrop;
+    state.blocks.filter(b=>b.day===day).forEach(b=>{
+      col.appendChild(renderBlock(b));
+    });
+    grid.appendChild(col);
+  });
+}
+
+function renderBlock(b){
+  const meta = CATEGORY_META[b.category] || CATEGORY_META.personal;
+  const el = document.createElement("div");
+  el.className = "block" + (b.placeholder ? " placeholder" : "");
+  el.style.background = meta.color;
+  el.style.top = ((toMinutes(b.start)-DAY_START*60)/60*ROW_H) + "px";
+  el.style.height = Math.max(20, duration(b)/60*ROW_H - 2) + "px";
+  el.draggable = true;
+  el.dataset.id = b.id;
+  el.innerHTML = `<span class="lbl">${escapeHtml(b.label)}</span><span class="tm">${b.start}–${b.end}</span>`;
+  el.ondragstart = (e)=>{
+    dragBlockId = b.id;
+    const rect = el.getBoundingClientRect();
+    dragOffsetMin = Math.round(((e.clientY - rect.top) / ROW_H) * 60);
+    e.dataTransfer.effectAllowed = "move";
+  };
+  el.onclick = (e)=> openPopover(b, e.clientX, e.clientY);
+  return el;
+}
+
+function onDrop(e){
+  e.preventDefault();
+  const day = e.currentTarget.dataset.day;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const y = e.clientY - rect.top;
+  const startMin = DAY_START*60 + (y/ROW_H*60) - dragOffsetMin;
+  const b = state.blocks.find(x=>x.id===dragBlockId);
+  if (!b) return;
+  const dur = duration(b);
+  const newStart = toTime(startMin);
+  const newEnd = toTime(toMinutes(newStart)+dur);
+  b.day = day; b.start = newStart; b.end = newEnd;
+  scheduleSave();
+  renderGrid();
+}
+
+function renderLegend(){
+  const el = document.getElementById("legend");
+  el.innerHTML = Object.values(CATEGORY_META).map(m=>
+    `<span><span class="swatch" style="background:${m.color}"></span>${m.label}</span>`
+  ).join("");
+}
+
+/* ---------- Popover (edit block) ---------- */
+const pop = document.getElementById("popover");
+let popTarget = null;
+function openPopover(block, x, y){
+  popTarget = block;
+  document.getElementById("pop-label").value = block.label;
+  document.getElementById("pop-start").value = block.start;
+  document.getElementById("pop-end").value = block.end;
+  const daySel = document.getElementById("pop-day");
+  daySel.innerHTML = DAYS.map(d=>`<option ${d===block.day?"selected":""}>${d}</option>`).join("");
+  const catSel = document.getElementById("pop-cat");
+  catSel.innerHTML = Object.entries(CATEGORY_META).map(([k,m])=>`<option value="${k}" ${k===block.category?"selected":""}>${m.label}</option>`).join("");
+  pop.style.display = "block";
+  const px = Math.min(x, window.innerWidth-240);
+  pop.style.left = px+"px";
+  pop.style.top = Math.min(y, window.innerHeight-260)+"px";
+}
+document.getElementById("pop-save").onclick = ()=>{
+  if (!popTarget) return;
+  popTarget.label = document.getElementById("pop-label").value || popTarget.label;
+  popTarget.start = document.getElementById("pop-start").value;
+  popTarget.end = document.getElementById("pop-end").value;
+  popTarget.day = document.getElementById("pop-day").value;
+  popTarget.category = document.getElementById("pop-cat").value;
+  delete popTarget.placeholder;
+  pop.style.display = "none";
+  scheduleSave();
+  renderGrid();
+};
+document.getElementById("pop-delete").onclick = ()=>{
+  state.blocks = state.blocks.filter(b=>b!==popTarget);
+  pop.style.display = "none";
+  scheduleSave();
+  renderGrid();
+};
+document.addEventListener("click", (e)=>{
+  if (pop.style.display==="block" && !pop.contains(e.target) && !e.target.classList.contains("block")) {
+    pop.style.display = "none";
+  }
+});
+
+document.getElementById("add-block-btn").onclick = ()=>{
+  const b = { id: uid(), day:"Mon", start:"09:00", end:"10:00", label:"New block", category:"personal" };
+  state.blocks.push(b);
+  scheduleSave();
+  renderGrid();
+  const el = document.querySelector(`[data-id="${b.id}"]`);
+  if (el) { const r = el.getBoundingClientRect(); openPopover(b, r.left, r.top); }
+};
+
+/* ---------- Tasks ---------- */
+function weekTasks(){ return state.tasks.filter(t=>t.weekStart===state.weekStart); }
+
+function renderTasks(){
+  const catSel = document.getElementById("new-task-cat");
+  catSel.innerHTML = Object.entries(CATEGORY_META).map(([k,m])=>`<option value="${k}">${m.label}</option>`).join("");
+
+  const list = document.getElementById("task-list");
+  list.innerHTML = "";
+  const wt = weekTasks();
+  document.getElementById("pending-count").textContent = wt.filter(t=>!t.completed).length + " open";
+
+  Object.keys(CATEGORY_META).forEach(catKey=>{
+    const items = wt.filter(t=>t.category===catKey);
+    if (!items.length) return;
+    const heading = document.createElement("div");
+    heading.style.cssText = "font-size:12px;font-weight:600;color:"+CATEGORY_META[catKey].color+";margin:10px 0 4px;";
+    heading.textContent = CATEGORY_META[catKey].label;
+    list.appendChild(heading);
+    items.forEach(t=>{
+      const row = document.createElement("div");
+      row.className = "task-row";
+      row.innerHTML = `
+        <button class="check ${t.completed?'done':''}" data-id="${t.id}">${t.completed?"✓":""}</button>
+        <span class="task-text ${t.completed?'done':''}">${escapeHtml(t.text)}</span>
+        ${t.carried>0 ? `<span class="badge">carried ${t.carried}×</span>` : ""}
+        <button class="del" data-id="${t.id}">✕</button>
+      `;
+      row.querySelector(".check").onclick = ()=>{ t.completed = !t.completed; scheduleSave(); renderTasks(); };
+      row.querySelector(".del").onclick = ()=>{ state.tasks = state.tasks.filter(x=>x.id!==t.id); scheduleSave(); renderTasks(); };
+      list.appendChild(row);
+    });
+  });
+}
+
+document.getElementById("add-task-btn").onclick = ()=>{
+  const input = document.getElementById("new-task-text");
+  const text = input.value.trim();
+  if (!text) return;
+  state.tasks.push({ id:uid(), text, category:document.getElementById("new-task-cat").value, weekStart:state.weekStart, completed:false, carried:0 });
+  input.value = "";
+  scheduleSave();
+  renderTasks();
+};
+document.getElementById("new-task-text").onkeydown = (e)=>{ if(e.key==="Enter") document.getElementById("add-task-btn").click(); };
+
+document.getElementById("ratio").onchange = (e)=>{
+  state.ratio = parseFloat(e.target.value)||2.5;
+  scheduleSave();
+};
+
+document.getElementById("rollover-btn").onclick = ()=>{
+  const pending = weekTasks().filter(t=>!t.completed);
+  const ok = confirm(pending.length ? `${pending.length} unfinished task(s) will carry into next week. Continue?` : "Everything's done — start next week?");
+  if (!ok) return;
+  const next = new Date(state.weekStart+"T00:00:00");
+  next.setDate(next.getDate()+7);
+  const nextIso = isoDate(next);
+  pending.forEach(t=>{
+    state.tasks.push({ id:uid(), text:t.text, category:t.category, weekStart:nextIso, completed:false, carried:(t.carried||0)+1 });
+  });
+  state.weekStart = nextIso;
+  scheduleSave();
+  maybeGenerateStudyBlocks();
+  render();
+};
+
+function escapeHtml(s){ const d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+
+/* ---------- Boot ---------- */
+(async ()=>{
+  const { data } = await sb.auth.getSession();
+  if (data.session) await onAuthed(data.session.user);
+})();
+</script>
+</body>
+</html>
